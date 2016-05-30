@@ -620,6 +620,10 @@ l_noret luaG_errormsg (lua_State *L) {
     L->top++;  /* assume EXTRA_STACK */
     luaD_callnoyield(L, L->top - 2, 1);  /* call it */
   }
+#if LUA_TILDE_DEBUGGER
+  if (L->hookmask & LUA_MASKERROR)
+    luaD_hook(L, LUA_HOOKERROR, -1);
+#endif /* LUA_TILDE_DEBUGGER */
   luaD_throw(L, LUA_ERRRUN);
 }
 
@@ -633,6 +637,10 @@ l_noret luaG_runerror (lua_State *L, const char *fmt, ...) {
   va_end(argp);
   if (isLua(ci))  /* if Lua function, add source:line information */
     luaG_addinfo(L, msg, ci_func(ci)->p->source, currentline(ci));
+#if LUA_TILDE_DEBUGGER
+  if (L->hookmask & LUA_MASKERROR)
+    luaD_hook(L, LUA_HOOKERROR, -1);
+#endif /* LUA_TILDE_DEBUGGER */
   luaG_errormsg(L);
 }
 

@@ -11,6 +11,7 @@
 #include <limits.h>
 #include <stddef.h>
 
+#include "../../luaplus/LuaPlusConfig.h"
 
 /*
 ** ===================================================================
@@ -158,6 +159,20 @@
 ** ===================================================================
 */
 
+#if defined(_WIN32)
+#define LUA_CSUFFIX_PLATFORM ".dll"
+#elif defined(macintosh)  ||  defined(__APPLE__)
+#define LUA_CSUFFIX_PLATFORM ".dylib"
+#else
+#define LUA_CSUFFIX_PLATFORM ".so"
+#endif
+
+#ifdef _DEBUG
+#define LUA_CSUFFIX ".debug" LUA_CSUFFIX_PLATFORM
+#else
+#define LUA_CSUFFIX LUA_CSUFFIX_PLATFORM
+#endif
+
 /*
 @@ LUA_PATH_DEFAULT is the default path that Lua uses to look for
 ** Lua libraries.
@@ -173,6 +188,20 @@
 ** In Windows, any exclamation mark ('!') in the path is replaced by the
 ** path of the directory of the executable file of the current process.
 */
+#if LUAPLUS_EXTENSIONS
+#define LUA_LDIR	"!\\lua\\"
+#define LUA_CDIR	"!\\modules\\"
+#define LUA_SHRDIR	"!\\share\\lua\\" LUA_VDIR "\\"
+#define LUA_PATH_DEFAULT  \
+		LUA_LDIR"?.lua;"  LUA_LDIR"?\\init.lua;" \
+		LUA_CDIR"?.lua;"  LUA_CDIR"?\\init.lua;" \
+		LUA_SHRDIR"?.lua;" LUA_SHRDIR"?\\init.lua;" \
+		".\\?.lua;" ".\\?\\init.lua"
+#define LUA_CPATH_DEFAULT \
+		LUA_CDIR"?" LUA_CSUFFIX ";" \
+		LUA_CDIR"lib\\lua\\" LUA_VDIR "\\?" LUA_CSUFFIX ";" \
+		LUA_CDIR"loadall" LUA_CSUFFIX ";" ".\\?" LUA_CSUFFIX
+#else
 #define LUA_LDIR	"!\\lua\\"
 #define LUA_CDIR	"!\\"
 #define LUA_SHRDIR	"!\\..\\share\\lua\\" LUA_VDIR "\\"
@@ -185,9 +214,20 @@
 		LUA_CDIR"?.dll;" \
 		LUA_CDIR"..\\lib\\lua\\" LUA_VDIR "\\?.dll;" \
 		LUA_CDIR"loadall.dll;" ".\\?.dll"
+#endif /* LUAPLUS_EXTENSIONS */
 
 #else			/* }{ */
 
+#if LUAPLUS_EXTENSIONS
+#define LUA_LDIR	"!/share/lua/" LUA_VDIR "/"
+#define LUA_CDIR	"!/lib/lua/" LUA_VDIR "/"
+#define LUA_PATH_DEFAULT  \
+		LUA_LDIR"?.lua;"  LUA_LDIR"?/init.lua;" \
+		LUA_CDIR"?.lua;"  LUA_CDIR"?/init.lua;" \
+		"./?.lua;" "./?/init.lua"
+#define LUA_CPATH_DEFAULT \
+		LUA_CDIR"?" LUA_CSUFFIX ";" LUA_CDIR"loadall" LUA_CSUFFIX ";" "./?" LUA_CSUFFIX
+#else
 #define LUA_ROOT	"/usr/local/"
 #define LUA_LDIR	LUA_ROOT "share/lua/" LUA_VDIR "/"
 #define LUA_CDIR	LUA_ROOT "lib/lua/" LUA_VDIR "/"
@@ -197,6 +237,8 @@
 		"./?.lua;" "./?/init.lua"
 #define LUA_CPATH_DEFAULT \
 		LUA_CDIR"?.so;" LUA_CDIR"loadall.so;" "./?.so"
+#endif /* LUAPLUS_EXTENSIONS */
+
 #endif			/* } */
 
 

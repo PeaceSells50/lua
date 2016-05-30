@@ -8,6 +8,15 @@
 
 #include "lprefix.h"
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
+// wxLua added to enable visual styles, the modern Win7+ controls in v6 of comctrl32.dll.
+#ifdef _MSC_VER
+    #pragma comment(lib,"comctl32.lib")
+    #pragma comment(linker,"\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+#endif // _MSC_VER
 
 #include <signal.h>
 #include <stdio.h>
@@ -19,6 +28,9 @@
 #include "lauxlib.h"
 #include "lualib.h"
 
+#if LUA_TILDE_DEBUGGER
+#include "tilde/LuaTilde.h"
+#endif /* LUA_TILDE_DEBUGGER */
 
 #if !defined(LUA_PROMPT)
 #define LUA_PROMPT		"> "
@@ -101,6 +113,22 @@
 static lua_State *globalL = NULL;
 
 static const char *progname = LUA_PROGNAME;
+
+
+static void DebugLineHook( lua_State* inState, lua_Debug* ar )
+{
+  if ( ar->event == LUA_HOOKLINE )
+  {
+    lua_Debug debugInfo;
+    lua_getstack( inState, 0, &debugInfo );
+    lua_getinfo( inState, "Sl", &debugInfo );
+
+    if ( debugInfo.source[0] == '@' )
+      debugInfo.source++;
+
+    printf("%s[%d]\n", debugInfo.source, debugInfo.currentline - 1);
+  }
+}
 
 
 /*
@@ -435,8 +463,17 @@ static int pushargs (lua_State *L) {
 static int handle_script (lua_State *L, char **argv) {
   int status;
   const char *fname = argv[0];
+#if LUA_TILDE_DEBUGGER  &&  _MSC_VER
+  char buffer[4096];
+#endif // LUA_TILDE_DEBUGGER  && _MSC_VER
   if (strcmp(fname, "-") == 0 && strcmp(argv[-1], "--") != 0)
     fname = NULL;  /* stdin */
+#if LUA_TILDE_DEBUGGER  &&  _MSC_VER
+  if (fname) {
+    _fullpath(buffer, fname, 4096);
+    fname = buffer;
+  }
+#endif // LUA_TILDE_DEBUGGER  && _MSC_VER
   status = luaL_loadfile(L, fname);
   if (status == LUA_OK) {
     int n = pushargs(L);  /* push arguments to script */
@@ -496,6 +533,38 @@ static int collectargs (char **argv, int *first) {
             return has_error;  /* no next argument or it is another option */
         }
         break;
+      case 'd': {
+#if LUA_TILDE_DEBUGGER
+        if (strcmp(argv[i], "-debug") == 0) {
+#if defined(_WIN32)
+          char filename[_MAX_PATH];
+          char* slashptr;
+          GetModuleFileName(NULL, filename, _MAX_PATH);
+          slashptr = strrchr(filename, '\\');
+          if (slashptr) {
+            HMODULE luaTildeModule;
+            LuaTildeHost* (*LuaTilde_Command)(LuaTildeHost*, const char*, void*, void*);
+            LuaTildeHost* host;
+            slashptr++;
+#ifdef _DEBUG
+            strcpy(slashptr, "lua-tilde.debug.dll");
+#else
+            strcpy(slashptr, "lua-tilde.dll");
+#endif
+            luaTildeModule = LoadLibrary(filename);
+            LuaTilde_Command = (LuaTildeHost* (*)(LuaTildeHost*, const char*, void*, void*))GetProcAddress(luaTildeModule, "LuaTilde_Command");
+#endif // _WIN32
+            host = LuaTilde_Command(NULL, "create", (void*)10000, NULL);
+            LuaTilde_Command(host, "registerstate", "State", globalL);
+            LuaTilde_Command(host, "waitfordebuggerconnection", NULL, NULL);
+          }
+        } else
+#endif /* LUA_TILDE_DEBUGGER */
+        if (strcmp(argv[i], "-dl") == 0) {
+          lua_sethook(globalL, DebugLineHook, LUA_MASKLINE, 0);
+        }
+        break;
+      }
       default:  /* invalid option */
         return has_error;
     }
@@ -592,7 +661,48 @@ static int pmain (lua_State *L) {
 
 int main (int argc, char **argv) {
   int status, result;
-  lua_State *L = luaL_newstate();  /* create state */
+  lua_State *L;  /* create state */
+#if defined(_WIN32)
+  {
+    FILE* file;
+    char filename[_MAX_PATH];
+    char* slashptr;
+    GetModuleFileName(NULL, filename, _MAX_PATH);
+    slashptr = strrchr(filename, '\\');
+    if (slashptr) {
+      slashptr++;
+      strcpy(slashptr, "lua.link");
+      file = fopen(filename, "r");
+      if (file) {
+        char buffer[ MAX_PATH ];
+        if (fgets(buffer, sizeof(buffer), file) != NULL) {
+          char *ptr = buffer + strlen(buffer) - 1;
+          while (ptr != buffer  &&  (*ptr == '\n'  ||  *ptr == '\r'))
+            *ptr-- = 0;
+          ++ptr;
+          if (*ptr != '/'  ||  *ptr != '\\') {
+            *ptr++ = '/';
+            *ptr = 0;
+          }
+
+          if (buffer[0] == '/'  ||  (buffer[1]  &&  buffer[1] == ':'))
+            strcpy(filename, buffer);
+          else
+            strcpy(slashptr, buffer);
+
+#ifdef _DEBUG
+          strcat(filename, "lua53_debug.dll");
+#else
+          strcat(filename, "lua53.dll");
+#endif
+          LoadLibrary(filename);
+        }
+        fclose(file);
+      }
+    }
+  }
+#endif
+  L = luaL_newstate();  /* create state */
   if (L == NULL) {
     l_message(argv[0], "cannot create state: not enough memory");
     return EXIT_FAILURE;
